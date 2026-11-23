@@ -19,7 +19,11 @@ mvn -q package      # target/oci-instance-automation.jar
 ## GitHub Actions setup
 
 1. Push this repository to GitHub. Scheduled workflows only run from the **default branch**.
-2. In **Settings -> Secrets and variables -> Actions**, add these **secrets**:
+2. The **Build automation jar** workflow runs on pushes that touch `src/`, `pom.xml`, or the
+   build workflow. It runs the tests and publishes the jar to the `automation-latest` release.
+   If the release step fails, enable **Settings -> Actions -> General -> Workflow permissions ->
+   Read and write permissions**.
+3. In **Settings -> Secrets and variables -> Actions**, add these **secrets**:
 
 | Secret | Value |
 | --- | --- |
@@ -31,7 +35,7 @@ mvn -q package      # target/oci-instance-automation.jar
 | `OCI_SUBNET_OCID` | public regional subnet |
 | `SSH_PUBLIC_KEY` | one-line OpenSSH public key |
 
-3. Optionally add these **repository variables** (Settings -> Secrets and variables -> Actions ->
+4. Optionally add these **repository variables** (Settings -> Secrets and variables -> Actions ->
    Variables):
 
 | Variable | Default | Purpose |
@@ -43,9 +47,12 @@ mvn -q package      # target/oci-instance-automation.jar
 | `BOOT_VOLUME_VPUS` | `20` | 10 Balanced, 20 Higher, 30-120 Ultra |
 | `MAX_ATTEMPTS` | `3` | attempts per workflow run |
 
-4. Open **Actions -> Create OCI Always Free instance -> Run workflow** for a first manual run.
-5. The schedule then runs every 10 minutes. Each run builds the jar, writes the OCI config from
-   secrets, makes up to `MAX_ATTEMPTS` launches 60 seconds apart, and reports the result.
+5. Wait for **Actions -> Build automation jar** to finish, or run it manually. It must publish the
+   `automation-latest` release before the scheduled workflow can start.
+6. Open **Actions -> Create OCI Always Free instance -> Run workflow** for a first manual run.
+7. The schedule then runs every 10 minutes. Each run downloads the prebuilt jar, writes the OCI
+   config from secrets, makes up to `MAX_ATTEMPTS` launches 60 seconds apart, and reports the
+   result. It does not compile anything.
 
 Generate the API key in **Identity -> Users -> your user -> API keys -> Add API key**. Copy the
 fingerprint, user OCID, and tenancy OCID into secrets. The private key is shown once; paste the
@@ -53,6 +60,15 @@ whole PEM into `OCI_PRIVATE_KEY`.
 
 For click-by-click instructions covering every value, including the compartment, subnet, and SSH
 key, see [docs/oci-credentials.md](docs/oci-credentials.md).
+
+### How the jar gets built
+
+`build.yml` runs the tests and `mvn package` once per source change (push to `main` touching
+`src/`, `pom.xml`, or the build workflow), then overwrites `oci-instance-automation.jar` on the
+`automation-latest` prerelease. `create-instance.yml` downloads that asset with `gh release
+download`; there is no Maven or compile step in the scheduled job.
+
+To rebuild manually, run **Actions -> Build automation jar -> Run workflow**.
 
 ### How a run behaves
 
@@ -65,7 +81,7 @@ key, see [docs/oci-credentials.md](docs/oci-credentials.md).
 - **Authentication, permission, parameter, or quota error** -> exit 1, red.
 - **Bad configuration** -> exit 2, red.
 - The workflow's concurrency group prevents two runs from launching at the same time.
-- A successful run exits immediately; later scheduled runs see the instance by name and do nothing.
+- A successful run exits immediately; later scheduled runs see any instance in the compartment and do nothing.
 
 ### Scheduling caveats
 
@@ -73,8 +89,9 @@ key, see [docs/oci-credentials.md](docs/oci-credentials.md).
 - Scheduled workflows are disabled in public repositories after 60 days without repository
   activity. Push a commit or run the workflow manually if that happens.
 - Standard runners are free for public repositories. For **private** repositories each run costs
-  roughly 2-3 minutes of the monthly allowance; at every 10 minutes that exceeds the 2,000-minute
-  free tier. Increase the cron interval, lower `MAX_ATTEMPTS`, or use the VPS fallback below.
+  roughly 1-2 minutes of the monthly allowance (runner startup plus launch attempts); the jar is
+  not rebuilt per run. At every 10 minutes that still exceeds the 2,000-minute free tier. Increase
+  the cron interval, lower `MAX_ATTEMPTS`, or use the VPS fallback below.
 - Use a dedicated OCI user with permission to manage instances in the target compartment, rather
   than a tenancy administrator.
 
