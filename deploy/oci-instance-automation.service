@@ -1,0 +1,29 @@
+[Unit]
+Description=OCI Always Free instance retry automation
+Wants=network-online.target
+After=network-online.target
+# Keep retrying across reboots and long capacity droughts.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=oci-automation
+Group=oci-automation
+WorkingDirectory=/opt/oci-instance-automation
+EnvironmentFile=/etc/oci-instance-automation/env
+ExecStart=/usr/bin/java -Xms64m -Xmx256m -jar /opt/oci-instance-automation/oci-instance-automation.jar
+# Exit code 0 means the instance exists; only failures restart.
+Restart=on-failure
+RestartSec=60
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+LockPersonality=true
