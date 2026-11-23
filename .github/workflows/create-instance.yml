@@ -86,6 +86,11 @@ jobs:
           MAX_ATTEMPTS: ${{ vars.MAX_ATTEMPTS || '3' }}
           ATTEMPT_INTERVAL_SECONDS: "60"
         run: |
+          if [ "${MAX_ATTEMPTS:-}" = "0" ]; then
+            echo "::warning::MAX_ATTEMPTS=0 would run until the job timeout; using 3 for this run."
+            export MAX_ATTEMPTS=3
+          fi
+
           set +e
           java -jar target/oci-instance-automation.jar
           code=$?
