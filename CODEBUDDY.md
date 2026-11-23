@@ -6,8 +6,11 @@ This file provides guidance to CodeBuddy Code when working with code in this rep
 
 A scheduled automation that creates one Oracle Cloud Always Free `VM.Standard.A1.Flex` instance
 (2 OCPU / 12 GB, 200 GB boot volume, no data disk) in the Singapore region using the newest Ubuntu
-26.04 aarch64 platform image. It is designed to run as a systemd service on a VPS and retry for as
-long as it takes to obtain capacity.
+26.04 aarch64 platform image. It retries against capacity shortages for as long as necessary.
+
+The primary deployment is `.github/workflows/create-instance.yml`: a scheduled GitHub Actions
+workflow that builds the jar, materializes OCI credentials from repository secrets, and runs the
+retry loop. `deploy/` holds an optional systemd/VPS fallback for the same jar.
 
 The repository started as a 2023 snapshot of Oracle's Java SDK `CreateInstanceExample`
 (commit `8f94b9a`); that single-file sample has been replaced. Its history remains useful for the
@@ -22,13 +25,10 @@ mvn -q package                     # shaded, runnable target/oci-instance-automa
 java -jar target/oci-instance-automation.jar --help
 ```
 
-`--check` validates configuration without calling OCI, `--once` makes a single launch attempt, and
-no arguments runs the retry loop. Exit codes: `0` instance running or already exists, `1` error,
-`2` invalid configuration.
-
-Running the real automation requires an OCI API config and `COMPARTMENT_OCID`, `SUBNET_OCID`, and
-`SSH_PUBLIC_KEY_FILE`. Configuration is entirely environment-variable driven; see
-`deploy/env.example` and `README.md`. There is no test that exercises the live OCI API.
+`--check` validates configuration without calling OCI, `--once` makes a single attempt, and no
+arguments runs the retry loop. Exit codes: `0` instance running or already exists, `1` fatal error,
+`2` invalid configuration, `3` no capacity within the attempt budget. The workflow treats `3` as a
+green "try again next run" and fails only on `1`/`2`.
 
 ## Architecture
 
@@ -37,7 +37,8 @@ Package `hk.myles.oci.automation`:
 - `Main` — parses flags, loads `AppConfig`, builds the config-file auth provider and three clients
   (`ComputeClient`, `VirtualNetworkClient`, `IdentityClient`) pinned to the configured region,
   resolves ADs and the image once, then runs the attempt loop. Each attempt first calls
-  `findExisting`, then rotates to the next AD and launches.
+  `findExisting`, then rotates to the next AD and launches. The SDK's own retries are disabled
+  (`RetryConfiguration.NO_RETRY_CONFIGURATION`) so the delay policy is authoritative.
 - `AppConfig` — parses all environment variables, applies defaults, and rejects any configuration
   that leaves the Always Free envelope (>2 OCPU, >12 GB, >200 GB boot), any attempt interval below
   60 s, invalid VPU values, malformed OCIDs, or a missing SSH public key. Also validates the region
@@ -54,24 +55,34 @@ Package `hk.myles.oci.automation`:
 - `RetryPolicy` — classifies `BmcException`: "out of host capacity" is `CAPACITY` (fixed 60 s wait),
   HTTP 429 is `RATE_LIMIT`, 5xx/timeouts are `TRANSIENT` (both double the delay up to the cap with
   +/-20% jitter), and 4xx plus quota/limit messages are `FATAL`. Unknown runtime exceptions abort.
-  The SDK's own retry layer is disabled (`RetryConfiguration.NO_RETRY_CONFIGURATION`) so delays are
-  not doubled by the client.
+  A 429 is checked before quota strings because "rate limit exceeded" also contains "limit
+  exceeded".
 
-`deploy/` contains the systemd unit (`Restart=on-failure`, `StartLimitIntervalSec=0`, sandboxed
-with `ProtectHome=true`), `install.sh` (creates the `oci-automation` system user and installs jar,
-unit, and env template), and `env.example`.
+`.github/workflows/create-instance.yml` runs every 10 minutes and on `workflow_dispatch`. It writes
+`~/.oci/config` and the private key from secrets, exports `OCI_CONFIG_FILE` and
+`SSH_PUBLIC_KEY_FILE`, builds with `-DskipTests`, and runs up to `MAX_ATTEMPTS` (default 3) attempts
+60 s apart. A concurrency group prevents overlapping launches. Repository variables tune region,
+name, image version/OCID, VPUs, and attempts.
+
+`deploy/` contains the optional systemd unit (`Restart=on-failure`, `StartLimitIntervalSec=0`,
+`ProtectHome=true`), `install.sh`, and `env.example`.
 
 ## Invariants to preserve
 
+- **No credentials in the repository.** The workflow expects `OCI_TENANCY_OCID`, `OCI_USER_OCID`,
+  `OCI_FINGERPRINT`, `OCI_PRIVATE_KEY`, `OCI_COMPARTMENT_OCID`, `OCI_SUBNET_OCID`, and
+  `SSH_PUBLIC_KEY` as Actions secrets. Never add keys, OCIDs, or a real config file to the tree.
 - **Free-tier caps are enforced, not advisory.** Do not raise the limits in `AppConfig` without an
   explicit request; a larger instance is no longer free.
 - **Never poll faster than every 60 seconds.** `ATTEMPT_INTERVAL_SECONDS` is validated to a minimum
   of 60 to avoid rate limits.
 - **Idempotency depends on `INSTANCE_NAME`.** `findExisting` lists instances by exact display name
   and treats anything not TERMINATING/TERMINATED as already done. Keep that check before every
-  launch.
+  launch, and keep the workflow concurrency group in place.
+- **Exit code 3 is meaningful.** It means "retryable failure, no instance" and keeps scheduled runs
+  green; do not collapse it into 1.
 - **Do not add per-attempt API calls** beyond the existing `listInstances` and `launchInstance`;
-  this runs indefinitely at one attempt per minute.
+  this runs indefinitely at one attempt per minute per active run.
 - **Region is set per client**, not taken from the OCI config file. `OCI_REGION` wins.
 - **Platform-image lookups use the tenancy OCID**; instance operations use `COMPARTMENT_OCID`.
 - Unit tests must stay credential-free: retry classification/backoff, config validation, image
