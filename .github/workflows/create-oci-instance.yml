@@ -3,7 +3,7 @@ name: Create OCI Always Free instance
 on:
   schedule:
     # GitHub delays scheduled runs under load; every 10 minutes is the practical floor here.
-    - cron: "*/10 * * * *"
+    - cron: "7,17,27,37,47,57 * * * *"
   workflow_dispatch:
 
 permissions:

@@ -10,7 +10,7 @@ A scheduled automation that creates one Oracle Cloud Always Free `VM.Standard.A1
 
 The primary deployment is two GitHub Actions workflows:
 `.github/workflows/build.yml` tests and packages the jar on source changes and publishes it to the
-`automation-latest` release, while `.github/workflows/create-instance.yml` runs every 10 minutes,
+`automation-latest` release, while `.github/workflows/create-oci-instance.yml` runs every 10 minutes,
 downloads that prebuilt jar, materializes OCI credentials from repository secrets, and runs the
 retry loop. `deploy/` holds an optional systemd/VPS fallback for the same jar.
 
@@ -64,7 +64,7 @@ Package `hk.myles.oci.automation`:
 on `workflow_dispatch`). It runs `mvn -q package`, then creates or overwrites
 `oci-instance-automation.jar` on the `automation-latest` prerelease. It needs `contents: write`.
 
-`.github/workflows/create-instance.yml` runs every 10 minutes and on `workflow_dispatch`. It
+`.github/workflows/create-oci-instance.yml` runs every 10 minutes and on `workflow_dispatch`. It
 downloads the release asset with `gh release download` (no checkout, no Maven), writes
 `~/.oci/config` and the private key from secrets, exports `OCI_CONFIG_FILE` and
 `SSH_PUBLIC_KEY_FILE`, and runs up to `MAX_ATTEMPTS` (default 3) attempts 60 s apart. A concurrency

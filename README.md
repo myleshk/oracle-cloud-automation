@@ -65,7 +65,7 @@ key, see [docs/oci-credentials.md](docs/oci-credentials.md).
 
 `build.yml` runs the tests and `mvn package` once per source change (push to `main` touching
 `src/`, `pom.xml`, or the build workflow), then overwrites `oci-instance-automation.jar` on the
-`automation-latest` prerelease. `create-instance.yml` downloads that asset with `gh release
+`automation-latest` prerelease. `create-oci-instance.yml` downloads that asset with `gh release
 download`; there is no Maven or compile step in the scheduled job.
 
 To rebuild manually, run **Actions -> Build automation jar -> Run workflow**.
