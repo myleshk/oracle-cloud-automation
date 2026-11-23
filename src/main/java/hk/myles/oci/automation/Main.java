@@ -104,6 +104,30 @@ public final class Main {
                 IdentityClient.builder().configuration(clientConfiguration).build(provider);
         identityClient.setRegion(region);
 
+        InstanceLauncher launcher = new InstanceLauncher(computeClient, virtualNetworkClient);
+
+        // Check before spending calls on ADs and images: if anything is already here, this run is done.
+        try {
+            Optional<Instance> existing = launcher.findAnyInstance(config);
+            if (existing.isPresent()) {
+                return handleExisting(config, launcher, existing.get());
+            }
+        } catch (BmcException e) {
+            RetryPolicy.FailureKind kind = RetryPolicy.classify(e);
+            if (kind == RetryPolicy.FailureKind.FATAL) {
+                LOG.error(
+                        "Cannot list instances in compartment {}: {}",
+                        AppConfig.mask(config.compartmentId()),
+                        summarize(e));
+                return 1;
+            }
+            LOG.warn("Initial instance check failed ({}): {}; continuing", kind, summarize(e));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            LOG.warn("Interrupted; stopping");
+            return 1;
+        }
+
         String tenancyId = provider.getTenantId();
         List<String> availabilityDomains;
         try {
@@ -122,7 +146,6 @@ public final class Main {
             return 1;
         }
 
-        InstanceLauncher launcher = new InstanceLauncher(computeClient, virtualNetworkClient);
         RetryPolicy policy = new RetryPolicy(
                 config.intervalSeconds() * 1000L,
                 config.maxBackoffSeconds() * 1000L);
@@ -133,26 +156,9 @@ public final class Main {
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             String availabilityDomain = availabilityDomains.get((attempt - 1) % availabilityDomains.size());
             try {
-                Optional<Instance> existing = launcher.findExisting(config);
+                Optional<Instance> existing = launcher.findAnyInstance(config);
                 if (existing.isPresent()) {
-                    Instance instance = existing.get();
-                    LOG.info(
-                            "An instance named '{}' already exists in state {}; not creating a duplicate",
-                            config.instanceName(),
-                            instance.getLifecycleState());
-                    if (instance.getLifecycleState() == Instance.LifecycleState.Provisioning
-                            || instance.getLifecycleState() == Instance.LifecycleState.Starting) {
-                        instance = launcher.waitForRunning(instance.getId());
-                    } else if (instance.getLifecycleState() == Instance.LifecycleState.Stopped
-                            || instance.getLifecycleState() == Instance.LifecycleState.Stopping) {
-                        LOG.warn(
-                                "The existing instance is {}; it still consumes the free allowance. "
-                                        + "Start it from the OCI console if that was not intended.",
-                                instance.getLifecycleState());
-                    }
-                    LOG.info("Existing instance: {}", instance.getId());
-                    launcher.printAddresses(config, instance);
-                    return 0;
+                    return handleExisting(config, launcher, existing.get());
                 }
 
                 Instance instance = launcher.launch(config, image.id(), availabilityDomain);
@@ -204,6 +210,35 @@ public final class Main {
 
         LOG.warn("No capacity within the attempt budget; the next scheduled run will try again");
         return 3;
+    }
+
+    private int handleExisting(AppConfig config, InstanceLauncher launcher, Instance instance)
+            throws InterruptedException {
+        LOG.info(
+                "An instance already exists in compartment {}: '{}' ({}), state {}; skipping creation",
+                AppConfig.mask(config.compartmentId()),
+                instance.getDisplayName(),
+                instance.getShape(),
+                instance.getLifecycleState());
+
+        Instance.LifecycleState state = instance.getLifecycleState();
+        if (state == Instance.LifecycleState.Provisioning
+                || state == Instance.LifecycleState.Starting) {
+            instance = launcher.waitForRunning(instance.getId());
+        } else if (state == Instance.LifecycleState.Stopped
+                || state == Instance.LifecycleState.Stopping) {
+            LOG.warn(
+                    "The existing instance is {}; it still consumes the free allowance. "
+                            + "Start it from the OCI console if that was not intended.",
+                    state);
+        } else if (state == Instance.LifecycleState.Terminating) {
+            LOG.warn("The existing instance is TERMINATING; the next run will retry after it is gone");
+            return 0;
+        }
+
+        LOG.info("Existing instance: {}", instance.getId());
+        launcher.printAddresses(config, instance);
+        return 0;
     }
 
     private List<String> resolveAvailabilityDomains(

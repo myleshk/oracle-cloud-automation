@@ -19,7 +19,7 @@ original SDK calls, but none of its hardcoded OCIDs or the boot-volume-cloning f
 ## Build, test, run
 
 ```bash
-mvn -q test                        # 25 unit tests; no OCI credentials or network calls
+mvn -q test                        # 28 unit tests; no OCI credentials or network calls
 mvn -q -Dtest=RetryPolicyTest test # single test class
 mvn -q package                     # shaded, runnable target/oci-instance-automation.jar (~19 MB)
 java -jar target/oci-instance-automation.jar --help
@@ -37,7 +37,7 @@ Package `hk.myles.oci.automation`:
 - `Main` — parses flags, loads `AppConfig`, builds the config-file auth provider and three clients
   (`ComputeClient`, `VirtualNetworkClient`, `IdentityClient`) pinned to the configured region,
   resolves ADs and the image once, then runs the attempt loop. Each attempt first calls
-  `findExisting`, then rotates to the next AD and launches. The SDK's own retries are disabled
+  `findAnyInstance`, then rotates to the next AD and launches. The SDK's own retries are disabled
   (`RetryConfiguration.NO_RETRY_CONFIGURATION`) so the delay policy is authoritative.
 - `AppConfig` — parses all environment variables, applies defaults, and rejects any configuration
   that leaves the Always Free envelope (>2 OCPU, >12 GB, >200 GB boot), any attempt interval below
@@ -76,9 +76,10 @@ name, image version/OCID, VPUs, and attempts.
   explicit request; a larger instance is no longer free.
 - **Never poll faster than every 60 seconds.** `ATTEMPT_INTERVAL_SECONDS` is validated to a minimum
   of 60 to avoid rate limits.
-- **Idempotency depends on `INSTANCE_NAME`.** `findExisting` lists instances by exact display name
-  and treats anything not TERMINATING/TERMINATED as already done. Keep that check before every
-  launch, and keep the workflow concurrency group in place.
+- **Idempotency is compartment-wide, not name-based.** `findAnyInstance` lists every instance in
+  the target compartment and treats anything not TERMINATED as already done, even with a different
+  display name or shape. `INSTANCE_NAME` is only the display name of the created instance. Keep
+  this check before every launch, and keep the workflow concurrency group in place.
 - **Exit code 3 is meaningful.** It means "retryable failure, no instance" and keeps scheduled runs
   green; do not collapse it into 1.
 - **Do not add per-attempt API calls** beyond the existing `listInstances` and `launchInstance`;

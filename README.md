@@ -5,14 +5,14 @@ data disk) in Singapore, using the newest Ubuntu 26.04 aarch64 image. The primar
 scheduled **GitHub Actions** workflow; the same jar can run on a VPS as a fallback.
 
 It retries capacity failures every 60 seconds and backs off exponentially when OCI returns HTTP 429
-or a transient 5xx. It is idempotent: if an instance with `INSTANCE_NAME` already exists (or a run
-is restarted mid-launch), it reports the existing instance and exits 0 instead of creating a
-duplicate.
+or a transient 5xx. Before every launch attempt it checks for **any** non-terminated instance in
+the target compartment. If one exists — regardless of its name — it reports that instance and
+exits 0 instead of creating a second one.
 
 ## Build and test
 
 ```bash
-mvn test            # 25 unit tests, no OCI credentials or network calls
+mvn test            # 28 unit tests, no OCI credentials or network calls
 mvn -q package      # target/oci-instance-automation.jar
 ```
 
@@ -37,7 +37,7 @@ mvn -q package      # target/oci-instance-automation.jar
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `OCI_REGION` | `ap-singapore-1` | must be the account's home region |
-| `INSTANCE_NAME` | `free-a1` | idempotency key |
+| `INSTANCE_NAME` | `free-a1` | display name for the created instance |
 | `IMAGE_VERSION` | `26.04` | Ubuntu version to discover |
 | `IMAGE_OCID` | unset | pin an exact image and skip discovery |
 | `BOOT_VOLUME_VPUS` | `20` | 10 Balanced, 20 Higher, 30-120 Ultra |
@@ -51,8 +51,15 @@ Generate the API key in **Identity -> Users -> your user -> API keys -> Add API 
 fingerprint, user OCID, and tenancy OCID into secrets. The private key is shown once; paste the
 whole PEM into `OCI_PRIVATE_KEY`.
 
+For click-by-click instructions covering every value, including the compartment, subnet, and SSH
+key, see [docs/oci-credentials.md](docs/oci-credentials.md).
+
 ### How a run behaves
 
+- **Any non-terminated instance already in the compartment** -> prints it and exits 0, green;
+  creation is skipped even if that instance has a different name or shape. The check is limited to
+  `COMPARTMENT_OCID`; an instance in another compartment is not seen and will surface later as a
+  quota error.
 - **Success or already exists** -> exit 0, green.
 - **No capacity within the attempt budget** -> exit 3, green with a notice; the next run retries.
 - **Authentication, permission, parameter, or quota error** -> exit 1, red.
@@ -83,7 +90,7 @@ The workflow supplies these; the same variables work when running the jar direct
 | `OCI_CONFIG_FILE` | `~/.oci/config` | written by the workflow |
 | `OCI_PROFILE` | `DEFAULT` | profile in the config file |
 | `OCI_REGION` | `ap-singapore-1` | must be the home region |
-| `INSTANCE_NAME` | `free-a1` | idempotency key |
+| `INSTANCE_NAME` | `free-a1` | display name for the created instance |
 | `SHAPE` | `VM.Standard.A1.Flex` | |
 | `OCPUS` / `MEMORY_GB` | `2` / `12` | hard-capped at Always Free |
 | `BOOT_VOLUME_GB` | `200` | hard-capped at Always Free |
