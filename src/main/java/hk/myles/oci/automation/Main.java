@@ -183,7 +183,7 @@ public final class Main {
                         delayMillis / 1000);
 
                 if (once || attempt == maxAttempts) {
-                    return 1;
+                    return 3;
                 }
                 try {
                     Thread.sleep(delayMillis);
@@ -202,8 +202,8 @@ public final class Main {
             }
         }
 
-        LOG.error("Attempt budget exhausted without creating an instance");
-        return 1;
+        LOG.warn("No capacity within the attempt budget; the next scheduled run will try again");
+        return 3;
     }
 
     private List<String> resolveAvailabilityDomains(
@@ -282,7 +282,8 @@ public final class Main {
                   MAX_BACKOFF_SECONDS       exponential backoff cap (default 1800)
                   MAX_ATTEMPTS              0 for unlimited (default 0)
 
-                Exit codes: 0 instance running or already exists, 1 error, 2 bad configuration.
+                Exit codes: 0 instance running or already exists, 1 fatal error,
+                            2 bad configuration, 3 no capacity within the attempt budget.
                 """);
     }
 }

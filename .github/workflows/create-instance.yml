@@ -1,0 +1,105 @@
+name: Create OCI Always Free instance
+
+on:
+  schedule:
+    # GitHub delays scheduled runs under load; every 10 minutes is the practical floor here.
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # A launch takes minutes; never let two runs race each other.
+  group: oci-instance-create
+  cancel-in-progress: false
+
+jobs:
+  create:
+    name: Attempt instance creation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Build the jar
+        run: mvn -B -q -DskipTests package
+
+      - name: Write OCI credentials
+        env:
+          OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
+          OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
+          OCI_COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
+          OCI_SUBNET_OCID: ${{ secrets.OCI_SUBNET_OCID }}
+          SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
+          OCI_REGION: ${{ vars.OCI_REGION || 'ap-singapore-1' }}
+        run: |
+          set -euo pipefail
+          umask 077
+
+          missing=0
+          for name in OCI_TENANCY_OCID OCI_USER_OCID OCI_FINGERPRINT OCI_PRIVATE_KEY \
+                      OCI_COMPARTMENT_OCID OCI_SUBNET_OCID SSH_PUBLIC_KEY; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required secret: $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 2
+          fi
+
+          mkdir -p "$HOME/.oci"
+          printf '%s\n' "$OCI_PRIVATE_KEY" > "$HOME/.oci/oci_api_key.pem"
+          {
+            echo "[DEFAULT]"
+            echo "user=$OCI_USER_OCID"
+            echo "fingerprint=$OCI_FINGERPRINT"
+            echo "tenancy=$OCI_TENANCY_OCID"
+            echo "region=$OCI_REGION"
+            echo "key_file=$HOME/.oci/oci_api_key.pem"
+          } > "$HOME/.oci/config"
+          printf '%s\n' "$SSH_PUBLIC_KEY" > "$RUNNER_TEMP/ssh_public_key.pub"
+
+          echo "OCI_CONFIG_FILE=$HOME/.oci/config" >> "$GITHUB_ENV"
+          echo "SSH_PUBLIC_KEY_FILE=$RUNNER_TEMP/ssh_public_key.pub" >> "$GITHUB_ENV"
+
+      - name: Try to create the instance
+        env:
+          COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
+          SUBNET_OCID: ${{ secrets.OCI_SUBNET_OCID }}
+          INSTANCE_NAME: ${{ vars.INSTANCE_NAME || 'free-a1' }}
+          IMAGE_VERSION: ${{ vars.IMAGE_VERSION || '26.04' }}
+          IMAGE_OCID: ${{ vars.IMAGE_OCID || '' }}
+          BOOT_VOLUME_VPUS: ${{ vars.BOOT_VOLUME_VPUS || '20' }}
+          MAX_ATTEMPTS: ${{ vars.MAX_ATTEMPTS || '3' }}
+          ATTEMPT_INTERVAL_SECONDS: "60"
+        run: |
+          set +e
+          java -jar target/oci-instance-automation.jar
+          code=$?
+          set -e
+
+          case "$code" in
+            0)
+              echo "Instance is running or already exists."
+              ;;
+            3)
+              echo "::notice title=No capacity yet::No instance was created in this run; the next scheduled run will retry."
+              ;;
+            *)
+              echo "::error title=Automation failed::Exit code $code. See the log above."
+              exit "$code"
+              ;;
+          esac

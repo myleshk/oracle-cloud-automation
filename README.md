@@ -1,108 +1,131 @@
 # OCI Always Free instance automation
 
-Creates one `VM.Standard.A1.Flex` instance (2 OCPU / 12 GB) in Singapore with a 200 GB boot
-volume, no data disk, and the newest Ubuntu 26.04 aarch64 image. It runs on a VPS, retries
-capacity failures every 60 seconds, and backs off exponentially when OCI returns HTTP 429 or a
-transient 5xx.
+Creates one Oracle Cloud `VM.Standard.A1.Flex` instance (2 OCPU / 12 GB, 200 GB boot volume, no
+data disk) in Singapore, using the newest Ubuntu 26.04 aarch64 image. The primary deployment is a
+scheduled **GitHub Actions** workflow; the same jar can run on a VPS as a fallback.
 
-The program is idempotent: if an instance with `INSTANCE_NAME` already exists (or the service is
-restarted mid-run), it reports the existing instance and exits 0 instead of creating a duplicate.
-A successful launch also exits 0, so systemd does not restart it.
-
-## Requirements
-
-- VPS with Java 17+ (the jar is self-contained)
-- OCI API key for an account whose **home region is Singapore** (Always Free is home-region only)
-- A public subnet and a compartment in `ap-singapore-1`
-- Maven 3.9+ and JDK 17+ only on the machine that builds the jar
+It retries capacity failures every 60 seconds and backs off exponentially when OCI returns HTTP 429
+or a transient 5xx. It is idempotent: if an instance with `INSTANCE_NAME` already exists (or a run
+is restarted mid-launch), it reports the existing instance and exits 0 instead of creating a
+duplicate.
 
 ## Build and test
 
 ```bash
-mvn test            # 25 unit tests, no OCI credentials needed
+mvn test            # 25 unit tests, no OCI credentials or network calls
 mvn -q package      # target/oci-instance-automation.jar
 ```
 
-## Install on the VPS
+## GitHub Actions setup
 
-```bash
-# from the repository root on the VPS
-mvn -q package
-sudo deploy/install.sh
-```
+1. Push this repository to GitHub. Scheduled workflows only run from the **default branch**.
+2. In **Settings -> Secrets and variables -> Actions**, add these **secrets**:
 
-Then follow the printed instructions: edit `/etc/oci-instance-automation/env`, add the OCI config
-and API private key, and fix ownership. Validate and start:
+| Secret | Value |
+| --- | --- |
+| `OCI_TENANCY_OCID` | tenancy OCID |
+| `OCI_USER_OCID` | OCI user the API key belongs to |
+| `OCI_FINGERPRINT` | API key fingerprint, e.g. `aa:bb:...` |
+| `OCI_PRIVATE_KEY` | full PEM contents, including BEGIN/END lines |
+| `OCI_COMPARTMENT_OCID` | compartment for the instance |
+| `OCI_SUBNET_OCID` | public regional subnet |
+| `SSH_PUBLIC_KEY` | one-line OpenSSH public key |
 
-```bash
-set -a; . /etc/oci-instance-automation/env; set +a
-java -jar /opt/oci-instance-automation/oci-instance-automation.jar --check
+3. Optionally add these **repository variables** (Settings -> Secrets and variables -> Actions ->
+   Variables):
 
-sudo systemctl enable --now oci-instance-automation
-journalctl -u oci-instance-automation -f
-```
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `OCI_REGION` | `ap-singapore-1` | must be the account's home region |
+| `INSTANCE_NAME` | `free-a1` | idempotency key |
+| `IMAGE_VERSION` | `26.04` | Ubuntu version to discover |
+| `IMAGE_OCID` | unset | pin an exact image and skip discovery |
+| `BOOT_VOLUME_VPUS` | `20` | 10 Balanced, 20 Higher, 30-120 Ultra |
+| `MAX_ATTEMPTS` | `3` | attempts per workflow run |
 
-`deploy/install.sh --start` starts it immediately and refuses if `REPLACE_ME` placeholders remain.
+4. Open **Actions -> Create OCI Always Free instance -> Run workflow** for a first manual run.
+5. The schedule then runs every 10 minutes. Each run builds the jar, writes the OCI config from
+   secrets, makes up to `MAX_ATTEMPTS` launches 60 seconds apart, and reports the result.
 
-## Where to get the OCIDs
+Generate the API key in **Identity -> Users -> your user -> API keys -> Add API key**. Copy the
+fingerprint, user OCID, and tenancy OCID into secrets. The private key is shown once; paste the
+whole PEM into `OCI_PRIVATE_KEY`.
 
-- **Compartment**: Identity & Security -> Compartments. The tenancy root OCID also works.
-- **Subnet**: Networking -> Virtual Cloud Networks -> your VCN -> Subnets. Use a regional public
-  subnet. The subnet's route table needs an internet gateway for outbound access.
-- **Image**: leave `IMAGE_OCID` unset; the program lists platform images for `Canonical Ubuntu`,
-  shape `VM.Standard.A1.Flex`, picks the newest aarch64 build matching `IMAGE_VERSION`, and prefers
-  the full image over the Minimal variant. If nothing matches, it prints the available images.
-- **Availability domain**: leave `AVAILABILITY_DOMAIN` unset to rotate over every AD in Singapore on
-  successive attempts.
+### How a run behaves
 
-## Behaviour
+- **Success or already exists** -> exit 0, green.
+- **No capacity within the attempt budget** -> exit 3, green with a notice; the next run retries.
+- **Authentication, permission, parameter, or quota error** -> exit 1, red.
+- **Bad configuration** -> exit 2, red.
+- The workflow's concurrency group prevents two runs from launching at the same time.
+- A successful run exits immediately; later scheduled runs see the instance by name and do nothing.
 
-- Sizing above 2 OCPU / 12 GB / 200 GB boot is rejected at startup, so it cannot silently leave the
-  Always Free allowance.
-- The tool assumes the account's 200 GB block-storage allowance is otherwise unused. It does not
-  enumerate existing boot or data volumes; check for leftovers before the first run.
-- `BOOT_VOLUME_VPUS=20` is the Higher Performance tier (the fastest normal tier); `10` is Balanced
-  and is the default for free boot volumes. Ultra High (`30`-`120`) is accepted but may be billed.
-  Oracle's Always Free page covers 200 GB of storage; VPU performance is metered separately. Check
-  the console's cost estimate if you need a guaranteed-zero bill, and drop to `10` if unsure.
-- Capacity errors (`Out of host capacity`) wait a fixed 60 seconds and rotate to the next AD.
-- HTTP 429 and 5xx double the delay (60, 120, 240 ... capped by `MAX_BACKOFF_SECONDS`) with
-  +/-20% jitter. The SDK's own retry layer is disabled so this is the only backoff.
-- Authentication, authorization, bad parameters, and quota/limit errors stop the run instead of
-  backing off. The systemd unit restarts after 60 seconds, so a persistent misconfiguration
-  repeats in the journal until it is fixed.
-- `--once` performs a single attempt. `--check` validates configuration without any API call.
-- Exit codes: `0` success or already exists, `1` error, `2` bad configuration.
+### Scheduling caveats
+
+- GitHub cron is UTC and best effort; runs can be delayed by several minutes under load.
+- Scheduled workflows are disabled in public repositories after 60 days without repository
+  activity. Push a commit or run the workflow manually if that happens.
+- Standard runners are free for public repositories. For **private** repositories each run costs
+  roughly 2-3 minutes of the monthly allowance; at every 10 minutes that exceeds the 2,000-minute
+  free tier. Increase the cron interval, lower `MAX_ATTEMPTS`, or use the VPS fallback below.
+- Use a dedicated OCI user with permission to manage instances in the target compartment, rather
+  than a tenancy administrator.
 
 ## Configuration reference
 
-All values are environment variables; see `deploy/env.example` for the full annotated list.
+The workflow supplies these; the same variables work when running the jar directly.
 
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `COMPARTMENT_OCID` | required | target compartment |
 | `SUBNET_OCID` | required | public regional subnet |
-| `SSH_PUBLIC_KEY_FILE` | required | injected as `ssh_authorized_keys` |
-| `OCI_CONFIG_FILE` | `~/.oci/config` | under systemd set to `/etc/oci-instance-automation/config` |
+| `SSH_PUBLIC_KEY_FILE` | required | file containing the public key |
+| `OCI_CONFIG_FILE` | `~/.oci/config` | written by the workflow |
+| `OCI_PROFILE` | `DEFAULT` | profile in the config file |
 | `OCI_REGION` | `ap-singapore-1` | must be the home region |
 | `INSTANCE_NAME` | `free-a1` | idempotency key |
-| `OCPUS` / `MEMORY_GB` | `2` / `12` | hard-capped at free tier |
-| `BOOT_VOLUME_GB` | `200` | hard-capped at free tier |
-| `BOOT_VOLUME_VPUS` | `20` | 10 Balanced, 20 Higher, 30-120 Ultra |
-| `IMAGE_VERSION` | `26.04` | set `IMAGE_OCID` to pin instead |
+| `SHAPE` | `VM.Standard.A1.Flex` | |
+| `OCPUS` / `MEMORY_GB` | `2` / `12` | hard-capped at Always Free |
+| `BOOT_VOLUME_GB` | `200` | hard-capped at Always Free |
+| `BOOT_VOLUME_VPUS` | `20` | see the billing note below |
+| `IMAGE_OS` | `Canonical Ubuntu` | |
+| `IMAGE_VERSION` | `26.04` | |
+| `IMAGE_OCID` | unset | pin instead of discovering |
+| `AVAILABILITY_DOMAIN` | unset | default rotates over all ADs |
+| `ASSIGN_PUBLIC_IP` | `true` | |
+| `NSG_IDS` | unset | comma-separated NSG OCIDs |
 | `ATTEMPT_INTERVAL_SECONDS` | `60` | minimum enforced |
-| `MAX_BACKOFF_SECONDS` | `1800` | cap for exponential backoff |
-| `MAX_ATTEMPTS` | `0` | 0 means unlimited |
+| `MAX_BACKOFF_SECONDS` | `1800` | 429/5xx backoff cap |
+| `MAX_ATTEMPTS` | `0` | program default; the workflow uses 3 |
+
+`BOOT_VOLUME_VPUS=20` is Higher Performance, the fastest normal tier; `10` is Balanced and is the
+default for free boot volumes. Ultra High (`30`-`120`) may be billed. Oracle's Always Free page
+covers 200 GB of storage, but VPU performance is metered separately. Check the console cost
+estimate if you need a guaranteed-zero bill, and drop to `10` if unsure.
+
+The tool assumes the account's 200 GB block-storage allowance is otherwise unused. It does not
+enumerate existing boot or data volumes; check for leftovers before the first run.
+
+## Optional: VPS fallback
+
+If Actions minutes are a problem, the same jar can run continuously on a VPS:
+
+```bash
+mvn -q package
+sudo deploy/install.sh
+```
+
+Then edit `/etc/oci-instance-automation/env`, add the OCI config and API key as described by the
+installer, validate with `--check`, and `systemctl enable --now oci-instance-automation`. See
+`deploy/env.example` and the comments printed by `deploy/install.sh`.
 
 ## Troubleshooting
 
-- `Out of host capacity`: normal; leave it running. Different ADs are tried in rotation.
-- `LimitExceeded` / service limits: another A1 instance or boot volume is already consuming the
-  account's allowance. Terminate it or free the boot volume, then restart the service.
-- `NotAuthenticated` / `NotAuthorizedOrNotFound`: wrong profile, key, compartment, or subnet OCID;
-  the service account must be able to read the tenancy and manage instances in the compartment.
-- No image found: the code prints the available images for that OS and shape. Set `IMAGE_OCID` or
-  change `IMAGE_VERSION`.
-- `--check` fails on the OCI config path: the systemd unit runs as `oci-automation` with
-  `ProtectHome=true`, so configurations under `/home` are not readable. Keep them in
-  `/etc/oci-instance-automation`.
+- `Out of host capacity`: normal; the workflow stays green and the next run retries.
+- `LimitExceeded` / service limits: another A1 instance or boot volume is consuming the allowance.
+  Terminate it or free the boot volume, then run the workflow again.
+- `NotAuthenticated`: check `OCI_USER_OCID`, `OCI_FINGERPRINT`, and that `OCI_PRIVATE_KEY` is the
+  complete PEM with real newlines. Re-download the key if necessary.
+- `NotAuthorizedOrNotFound`: wrong compartment or subnet OCID, or the user lacks permission.
+- No image found: the log lists available images for that OS and shape. Set the `IMAGE_VERSION`
+  variable or pin `IMAGE_OCID`.
