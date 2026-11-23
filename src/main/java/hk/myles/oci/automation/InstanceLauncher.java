@@ -79,28 +79,37 @@ public final class InstanceLauncher {
         return details.build();
     }
 
-    /** Returns an existing instance with the configured display name, if one is still alive. */
-    public Optional<Instance> findExisting(AppConfig config) {
+    /**
+     * Returns any non-terminated instance in the target compartment, regardless of display name.
+     * The Always Free allowance is per tenancy, so a second instance is never created. TERMINATING
+     * instances still count because their boot volume is still consuming the allowance.
+     */
+    public Optional<Instance> findAnyInstance(AppConfig config) {
         String page = null;
         do {
             ListInstancesResponse response = computeClient.listInstances(ListInstancesRequest.builder()
                     .compartmentId(config.compartmentId())
-                    .displayName(config.instanceName())
                     .limit(100)
                     .page(page)
                     .build());
-            List<Instance> items = response.getItems();
-            if (items != null) {
-                for (Instance instance : items) {
-                    Instance.LifecycleState state = instance.getLifecycleState();
-                    if (state != Instance.LifecycleState.Terminated
-                            && state != Instance.LifecycleState.Terminating) {
-                        return Optional.of(instance);
-                    }
-                }
+            Optional<Instance> active = firstActive(response.getItems());
+            if (active.isPresent()) {
+                return active;
             }
             page = response.getOpcNextPage();
         } while (page != null);
+        return Optional.empty();
+    }
+
+    static Optional<Instance> firstActive(List<Instance> instances) {
+        if (instances == null) {
+            return Optional.empty();
+        }
+        for (Instance instance : instances) {
+            if (instance.getLifecycleState() != Instance.LifecycleState.Terminated) {
+                return Optional.of(instance);
+            }
+        }
         return Optional.empty();
     }
 
