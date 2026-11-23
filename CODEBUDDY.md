@@ -8,8 +8,10 @@ A scheduled automation that creates one Oracle Cloud Always Free `VM.Standard.A1
 (2 OCPU / 12 GB, 200 GB boot volume, no data disk) in the Singapore region using the newest Ubuntu
 26.04 aarch64 platform image. It retries against capacity shortages for as long as necessary.
 
-The primary deployment is `.github/workflows/create-instance.yml`: a scheduled GitHub Actions
-workflow that builds the jar, materializes OCI credentials from repository secrets, and runs the
+The primary deployment is two GitHub Actions workflows:
+`.github/workflows/build.yml` tests and packages the jar on source changes and publishes it to the
+`automation-latest` release, while `.github/workflows/create-instance.yml` runs every 10 minutes,
+downloads that prebuilt jar, materializes OCI credentials from repository secrets, and runs the
 retry loop. `deploy/` holds an optional systemd/VPS fallback for the same jar.
 
 The repository started as a 2023 snapshot of Oracle's Java SDK `CreateInstanceExample`
@@ -58,17 +60,24 @@ Package `hk.myles.oci.automation`:
   A 429 is checked before quota strings because "rate limit exceeded" also contains "limit
   exceeded".
 
-`.github/workflows/create-instance.yml` runs every 10 minutes and on `workflow_dispatch`. It writes
+`.github/workflows/build.yml` runs on pushes to `main` that touch `src/`, `pom.xml`, or itself (and
+on `workflow_dispatch`). It runs `mvn -q package`, then creates or overwrites
+`oci-instance-automation.jar` on the `automation-latest` prerelease. It needs `contents: write`.
+
+`.github/workflows/create-instance.yml` runs every 10 minutes and on `workflow_dispatch`. It
+downloads the release asset with `gh release download` (no checkout, no Maven), writes
 `~/.oci/config` and the private key from secrets, exports `OCI_CONFIG_FILE` and
-`SSH_PUBLIC_KEY_FILE`, builds with `-DskipTests`, and runs up to `MAX_ATTEMPTS` (default 3) attempts
-60 s apart. A concurrency group prevents overlapping launches. Repository variables tune region,
-name, image version/OCID, VPUs, and attempts.
+`SSH_PUBLIC_KEY_FILE`, and runs up to `MAX_ATTEMPTS` (default 3) attempts 60 s apart. A concurrency
+group prevents overlapping launches. Repository variables tune region, name, image version/OCID,
+VPUs, and attempts.
 
 `deploy/` contains the optional systemd unit (`Restart=on-failure`, `StartLimitIntervalSec=0`,
 `ProtectHome=true`), `install.sh`, and `env.example`.
 
 ## Invariants to preserve
 
+- **Do not add a build step to the scheduled workflow.** It must download `automation-latest`;
+  building there wastes runner minutes on every attempt. Source changes belong in `build.yml`.
 - **No credentials in the repository.** The workflow expects `OCI_TENANCY_OCID`, `OCI_USER_OCID`,
   `OCI_FINGERPRINT`, `OCI_PRIVATE_KEY`, `OCI_COMPARTMENT_OCID`, `OCI_SUBNET_OCID`, and
   `SSH_PUBLIC_KEY` as Actions secrets. Never add keys, OCIDs, or a real config file to the tree.
