@@ -82,6 +82,7 @@ jobs:
           echo "SSH_PUBLIC_KEY_FILE=$RUNNER_TEMP/ssh_public_key.pub" >> "$GITHUB_ENV"
 
       - name: Try to create the instance
+        id: attempt
         env:
           COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
           SUBNET_OCID: ${{ secrets.OCI_SUBNET_OCID }}
@@ -98,9 +99,11 @@ jobs:
           fi
 
           set +e
-          java -jar target/oci-instance-automation.jar
-          code=$?
+          java -jar target/oci-instance-automation.jar 2>&1 | tee "$RUNNER_TEMP/run.log"
+          code=${PIPESTATUS[0]}
           set -e
+
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
 
           case "$code" in
             0)
@@ -114,3 +117,43 @@ jobs:
               exit "$code"
               ;;
           esac
+
+      - name: Summarise the run
+        if: always()
+        env:
+          EXIT_CODE: ${{ steps.attempt.outputs.exit_code }}
+        run: |
+          set -uo pipefail
+          log="$RUNNER_TEMP/run.log"
+
+          case "${EXIT_CODE:-}" in
+            0) result="Running, or an instance already existed" ;;
+            3) result="No instance yet (capacity or rate limit); the next run retries" ;;
+            "") result="The automation step did not finish" ;;
+            *) result="Failed with exit code ${EXIT_CODE}" ;;
+          esac
+
+          attempts=0
+          last_failure=""
+          instance=""
+          public_ip=""
+          if [ -f "$log" ]; then
+            attempts=$(grep -c "Attempt .* failed" "$log" || true)
+            last_failure=$(grep "Attempt .* failed" "$log" | tail -n 1 \
+              | sed -E 's/^[0-9T:.Z-]+ +[A-Z]+ +[A-Za-z0-9_.]+ +- +//' | cut -c1-300 || true)
+            instance=$(grep -oE "SUCCESS: instance ocid1[^ ]+" "$log" | tail -n 1 | awk '{print $3}' || true)
+            public_ip=$(grep -oE "Public IP: [0-9.]+" "$log" | tail -n 1 | awk '{print $3}' || true)
+          fi
+
+          {
+            echo "## OCI instance automation"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Result | ${result} |"
+            echo "| Launch attempts | ${attempts} |"
+            if [ -n "$instance" ]; then echo "| Instance | ${instance} |"; fi
+            if [ -n "$public_ip" ]; then echo "| Public IP | ${public_ip} |"; fi
+            if [ -n "$last_failure" ]; then echo "| Last failure | ${last_failure//|/\\|} |"; fi
+            echo "| Trigger | ${GITHUB_EVENT_NAME} |"
+          } >> "$GITHUB_STEP_SUMMARY"

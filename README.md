@@ -1,5 +1,7 @@
 # OCI Always Free instance automation
 
+[![Create OCI Always Free instance](https://github.com/myleshk/oracle-cloud-automation/actions/workflows/create-oci-instance.yml/badge.svg)](https://github.com/myleshk/oracle-cloud-automation/actions/workflows/create-oci-instance.yml)
+
 Creates one Oracle Cloud `VM.Standard.A1.Flex` instance (2 OCPU / 12 GB, 200 GB boot volume, no
 data disk) in Singapore, using the newest Ubuntu 26.04 aarch64 image. The primary deployment is a
 scheduled **GitHub Actions** workflow; the same jar can run on a VPS as a fallback.
