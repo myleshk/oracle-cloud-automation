@@ -14,7 +14,7 @@
 | Trigger | workflow_dispatch |
 <!-- STATUS:END -->
 
-Creates one Oracle Cloud `VM.Standard.A1.Flex` instance (2 OCPU / 12 GB, 200 GB boot volume, no
+Creates one Oracle Cloud `VM.Standard.A1.Flex` instance (2 OCPU / 12 GB, 199 GB boot volume, no
 data disk) in Singapore, using the newest Ubuntu 26.04 aarch64 image. The primary deployment is a
 scheduled **GitHub Actions** workflow; the same jar can run on a VPS as a fallback.
 
@@ -140,7 +140,7 @@ The workflow supplies these; the same variables work when running the jar direct
 | `INSTANCE_NAME` | `free-a1` | display name for the created instance |
 | `SHAPE` | `VM.Standard.A1.Flex` | |
 | `OCPUS` / `MEMORY_GB` | `2` / `12` | hard-capped at Always Free |
-| `BOOT_VOLUME_GB` | `200` | hard-capped at Always Free |
+| `BOOT_VOLUME_GB` | `199` | 1 GB below the 200 GB Always Free cap |
 | `BOOT_VOLUME_VPUS` | `20` | see the billing note below |
 | `IMAGE_OS` | `Canonical Ubuntu` | |
 | `IMAGE_VERSION` | `26.04` | |

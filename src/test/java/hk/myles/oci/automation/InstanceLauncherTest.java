@@ -35,7 +35,7 @@ class InstanceLauncherTest {
 
         InstanceSourceViaImageDetails source = (InstanceSourceViaImageDetails) details.getSourceDetails();
         assertEquals("ocid1.image.oc1.ap-singapore-1..ubuntu", source.getImageId());
-        assertEquals(200L, source.getBootVolumeSizeInGBs());
+        assertEquals(199L, source.getBootVolumeSizeInGBs());
         assertEquals(20L, source.getBootVolumeVpusPerGB());
 
         assertEquals(config.subnetId(), details.getCreateVnicDetails().getSubnetId());

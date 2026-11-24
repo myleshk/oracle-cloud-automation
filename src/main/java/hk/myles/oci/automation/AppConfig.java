@@ -117,7 +117,7 @@ public final class AppConfig {
 
         float ocpus = decimal(env, "OCPUS", 2f, errors);
         float memoryGb = decimal(env, "MEMORY_GB", 12f, errors);
-        long bootVolumeGb = integer(env, "BOOT_VOLUME_GB", 200L, errors);
+        long bootVolumeGb = integer(env, "BOOT_VOLUME_GB", 199L, errors);
         long bootVolumeVpus = integer(env, "BOOT_VOLUME_VPUS", 20L, errors);
         String imageOs = string(env, "IMAGE_OS", "Canonical Ubuntu");
         String imageVersion = string(env, "IMAGE_VERSION", "26.04");

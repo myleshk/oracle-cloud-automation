@@ -24,7 +24,7 @@ class AppConfigTest {
         assertEquals("VM.Standard.A1.Flex", config.shape());
         assertEquals(2f, config.ocpus());
         assertEquals(12f, config.memoryGb());
-        assertEquals(200L, config.bootVolumeGb());
+        assertEquals(199L, config.bootVolumeGb());
         assertEquals(20L, config.bootVolumeVpus());
         assertEquals(60, config.intervalSeconds());
         assertEquals(1800, config.maxBackoffSeconds());

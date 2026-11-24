@@ -5,7 +5,7 @@ This file provides guidance to CodeBuddy Code when working with code in this rep
 ## What this repository is
 
 A scheduled automation that creates one Oracle Cloud Always Free `VM.Standard.A1.Flex` instance
-(2 OCPU / 12 GB, 200 GB boot volume, no data disk) in the Singapore region using the newest Ubuntu
+(2 OCPU / 12 GB, 199 GB boot volume, no data disk) in the Singapore region using the newest Ubuntu
 26.04 aarch64 platform image. It retries against capacity shortages for as long as necessary.
 
 The primary deployment is two GitHub Actions workflows:

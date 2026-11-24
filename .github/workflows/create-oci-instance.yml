@@ -89,6 +89,7 @@ jobs:
           INSTANCE_NAME: ${{ vars.INSTANCE_NAME || 'free-a1' }}
           IMAGE_VERSION: ${{ vars.IMAGE_VERSION || '26.04' }}
           IMAGE_OCID: ${{ vars.IMAGE_OCID || '' }}
+          BOOT_VOLUME_GB: ${{ vars.BOOT_VOLUME_GB || '199' }}
           BOOT_VOLUME_VPUS: ${{ vars.BOOT_VOLUME_VPUS || '20' }}
           MAX_ATTEMPTS: ${{ vars.MAX_ATTEMPTS || '3' }}
           ATTEMPT_INTERVAL_SECONDS: "120"

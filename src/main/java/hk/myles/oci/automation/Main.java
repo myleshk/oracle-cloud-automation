@@ -70,7 +70,7 @@ public final class Main {
         if (checkOnly) {
             System.out.println("Configuration OK (no API calls made)");
             System.out.println(config.describe());
-            System.out.println("  Free-tier limits  : within 2 OCPU / 12 GB / 200 GB");
+            System.out.println("  Free-tier limits  : within 2 OCPU / 12 GB / 199 GB boot");
             return 0;
         }
 
@@ -316,7 +316,7 @@ public final class Main {
                   SHAPE                     shape (default VM.Standard.A1.Flex)
                   OCPUS                     up to 2 (default 2)
                   MEMORY_GB                 up to 12 (default 12)
-                  BOOT_VOLUME_GB            up to 200 (default 200)
+                  BOOT_VOLUME_GB            up to 200 (default 199)
                   BOOT_VOLUME_VPUS          10, 20, or 30-120 (default 20)
                   IMAGE_OS                  image OS name (default "Canonical Ubuntu")
                   IMAGE_VERSION             image version (default 26.04)
