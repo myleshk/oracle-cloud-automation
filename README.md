@@ -7,10 +7,10 @@
 
 | Field | Value |
 | --- | --- |
-| Time | 2026-11-24 07:24:20 UTC ([run #22](https://github.com/myleshk/oracle-cloud-automation/actions/runs/45347182057)) |
+| Time | 2026-11-24 07:34:24 UTC ([run #23](https://github.com/myleshk/oracle-cloud-automation/actions/runs/45348460749)) |
 | Result | No instance yet (capacity or rate limit); the next run retries |
 | Launch attempts | 3 |
-| Last failure | Attempt 3 in cUpg:AP-SINGAPORE-1-AD-1 failed (CAPACITY): Error returned by LaunchInstance operation in Compute service.(500, InternalError, false) Out of host capacity. (opc-request-id: 4EACB3426B744C328F74DB8178257D98/0F2155D0E6698432A33B056B53494EB7/D84F1A1E258AC7AB7C22AB109FFDD2FB) Timestamp: 202 |
+| Last failure | Attempt 3 in cUpg:AP-SINGAPORE-1-AD-1 failed (CAPACITY): Error returned by LaunchInstance operation in Compute service.(500, InternalError, false) Out of host capacity. (opc-request-id: AD82BBB226A1478AA0B7107DD29CE655/76AE3E101CA5CBAFFF3D056B53494EA2/C669F2EA1CE1269062F23957859BDA17) Timestamp: 202 |
 | Trigger | workflow_dispatch |
 <!-- STATUS:END -->
 
