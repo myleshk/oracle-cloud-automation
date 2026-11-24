@@ -7,11 +7,11 @@
 
 | Field | Value |
 | --- | --- |
-| Time | 2026-11-24 10:30:41 UTC ([run #41](https://github.com/myleshk/oracle-cloud-automation/actions/runs/45374797512)) |
+| Time | 2026-11-24 10:30:56 UTC ([run #42](https://github.com/myleshk/oracle-cloud-automation/actions/runs/45375362714)) |
 | Result | No instance yet (capacity or rate limit); the next run retries |
-| Launch attempts | 3 |
-| Last failure | Attempt 3 in cUpg:AP-SINGAPORE-1-AD-1 failed (CAPACITY): Error returned by LaunchInstance operation in Compute service.(500, InternalError, false) Out of host capacity. (opc-request-id: 0344B2BE99384B7A954D7D2173953A63/D80C45E5509776715067056B53494E68/6E7DF8B1827A3A98AB17692780B5D657) Timestamp: 202 |
-| Trigger | schedule |
+| Launch attempts | 1 |
+| Last failure | Attempt 1 in cUpg:AP-SINGAPORE-1-AD-1 hit a rate limit (HTTP 429): Error returned by LaunchInstance operation in Compute service.(429, TooManyRequests, false) Too many requests for the tenant (opc-request-id: A3733193483842B58B5182AF57B982A7/5D95C9C64B707D0D6067056B53494EE8/AC751988986E96E6B218F627F |
+| Trigger | workflow_dispatch |
 <!-- STATUS:END -->
 
 Creates one Oracle Cloud `VM.Standard.A1.Flex` instance (2 OCPU / 12 GB, 200 GB boot volume, no
