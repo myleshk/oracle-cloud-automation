@@ -85,13 +85,23 @@ To rebuild manually, run **Actions -> Build automation jar -> Run workflow**.
 
 ### Scheduling caveats
 
+GitHub's `on.schedule` has not been reliable for this repository since November 2026: the workflow
+lists as active, `workflow_dispatch` starts immediately, and no `schedule` run is ever created.
+`cloudflare-worker/` therefore owns the clock and calls `workflow_dispatch` every 10 minutes. The
+`schedule` block stays in the workflow as a fallback, and the workflow's concurrency group keeps
+the two paths from racing.
+
+- Deploy the worker: `cd cloudflare-worker`, then `npx wrangler secret put GITHUB_TOKEN` with a
+  fine-grained PAT scoped to this repository (Actions: read and write), then `npx wrangler deploy`.
+  Add the optional `TRIGGER_KEY` secret if you want the `POST /dispatch` endpoint guarded.
+- Trigger a run by hand: `scripts/dispatch.sh`. It reads the same PAT from `$GITHUB_TOKEN`, or from
+  `~/.config/github-tokens/myleshk-oracle-cloud-automation`, and prints the workflow run URL.
 - GitHub cron is UTC and best effort; runs can be delayed by several minutes under load.
 - Scheduled workflows are disabled in public repositories after 60 days without repository
   activity. Push a commit or run the workflow manually if that happens.
-- Standard runners are free for public repositories. For **private** repositories each run costs
-  roughly 1-2 minutes of the monthly allowance (runner startup plus launch attempts); the jar is
-  not rebuilt per run. At every 10 minutes that still exceeds the 2,000-minute free tier. Increase
-  the cron interval, lower `MAX_ATTEMPTS`, or use the VPS fallback below.
+- Standard runners are free for public repositories, so a 10-minute cadence costs nothing now that
+  this repository is public. A **private** repository pays roughly 1-2 minutes of the monthly
+  allowance per run, which exceeds the 2,000-minute free tier at this cadence.
 - Use a dedicated OCI user with permission to manage instances in the target compartment, rather
   than a tenancy administrator.
 

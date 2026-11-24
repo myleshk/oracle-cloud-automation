@@ -1,0 +1,18 @@
+name = "oci-instance-cron"
+main = "src/index.js"
+compatibility_date = "2026-11-24"
+
+# GitHub repository the worker dispatches. GITHUB_TOKEN is a secret, not a var:
+#   npx wrangler secret put GITHUB_TOKEN
+[vars]
+OWNER = "myleshk"
+REPO = "oracle-cloud-automation"
+WORKFLOW_FILE = "create-oci-instance.yml"
+REF = "main"
+
+# Every 10 minutes, the practical floor for the workflow's launch attempts.
+[triggers]
+crons = ["*/10 * * * *"]
+
+[observability]
+enabled = true
