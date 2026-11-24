@@ -7,10 +7,10 @@
 
 | Field | Value |
 | --- | --- |
-| Time | 2026-11-24 10:30:56 UTC ([run #42](https://github.com/myleshk/oracle-cloud-automation/actions/runs/45375362714)) |
+| Time | 2026-11-24 10:44:24 UTC ([run #43](https://github.com/myleshk/oracle-cloud-automation/actions/runs/45376947736)) |
 | Result | No instance yet (capacity or rate limit); the next run retries |
-| Launch attempts | 1 |
-| Last failure | Attempt 1 in cUpg:AP-SINGAPORE-1-AD-1 hit a rate limit (HTTP 429): Error returned by LaunchInstance operation in Compute service.(429, TooManyRequests, false) Too many requests for the tenant (opc-request-id: A3733193483842B58B5182AF57B982A7/5D95C9C64B707D0D6067056B53494EE8/AC751988986E96E6B218F627F |
+| Launch attempts | 3 |
+| Last failure | Attempt 3 in cUpg:AP-SINGAPORE-1-AD-1 failed (CAPACITY): Error returned by LaunchInstance operation in Compute service.(500, InternalError, false) Out of host capacity. (opc-request-id: EE93D285814544F8A51FE16A16CEBEB1/3A4C79B53FEFC297876A056B53494E9C/07BE6E8EE6EF5D915FA9590B9C169502) Timestamp: 202 |
 | Trigger | workflow_dispatch |
 <!-- STATUS:END -->
 
