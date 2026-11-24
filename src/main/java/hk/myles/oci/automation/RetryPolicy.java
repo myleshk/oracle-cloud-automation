@@ -9,9 +9,10 @@ import java.util.Random;
  * Failure classification and delay calculation.
  *
  * <p>Capacity failures ("out of host capacity") are expected on Always Free shapes and are retried
- * at the fixed base interval. Rate limits (HTTP 429) and transient server errors double the delay
- * each time, up to a cap. All delays carry +/-20% jitter so a fleet of retriers does not
- * synchronize.
+ * at the fixed base interval. Transient server errors double the delay each time, up to a cap, and
+ * all delays carry +/-20% jitter so a fleet of retriers does not synchronize. HTTP 429 is classified
+ * as {@link FailureKind#RATE_LIMIT} so the caller can end the run instead of adding load while the
+ * tenant window is closed.
  */
 public final class RetryPolicy {
     public enum FailureKind {

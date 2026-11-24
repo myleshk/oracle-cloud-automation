@@ -4,8 +4,9 @@ Creates one Oracle Cloud `VM.Standard.A1.Flex` instance (2 OCPU / 12 GB, 200 GB 
 data disk) in Singapore, using the newest Ubuntu 26.04 aarch64 image. The primary deployment is a
 scheduled **GitHub Actions** workflow; the same jar can run on a VPS as a fallback.
 
-It retries capacity failures every 60 seconds and backs off exponentially when OCI returns HTTP 429
-or a transient 5xx. Before every launch attempt it checks for **any** non-terminated instance in
+It retries capacity failures every 120 seconds in the workflow, and stops the run as soon as OCI
+returns HTTP 429 so the next trigger makes the next attempt; transient 5xx errors back off
+exponentially. Before every launch attempt it checks for **any** non-terminated instance in
 the target compartment. If one exists — regardless of its name — it reports that instance and
 exits 0 instead of creating a second one.
 
@@ -51,7 +52,7 @@ mvn -q package      # target/oci-instance-automation.jar
    `automation-latest` release before the scheduled workflow can start.
 6. Open **Actions -> Create OCI Always Free instance -> Run workflow** for a first manual run.
 7. The schedule then runs every 10 minutes. Each run downloads the prebuilt jar, writes the OCI
-   config from secrets, makes up to `MAX_ATTEMPTS` launches 60 seconds apart, and reports the
+   config from secrets, makes up to `MAX_ATTEMPTS` launches 120 seconds apart, and reports the
    result. It does not compile anything.
 
 Generate the API key in **Identity -> Users -> your user -> API keys -> Add API key**. Copy the
@@ -78,6 +79,8 @@ To rebuild manually, run **Actions -> Build automation jar -> Run workflow**.
   quota error.
 - **Success or already exists** -> exit 0, green.
 - **No capacity within the attempt budget** -> exit 3, green with a notice; the next run retries.
+- **HTTP 429 from OCI** -> exit 3 at once, green with a notice; the run does not retry internally,
+  so the tenant limit gets a full 10-minute window before the next trigger.
 - **Authentication, permission, parameter, or quota error** -> exit 1, red.
 - **Bad configuration** -> exit 2, red.
 - The workflow's concurrency group prevents two runs from launching at the same time.
@@ -131,8 +134,8 @@ The workflow supplies these; the same variables work when running the jar direct
 | `AVAILABILITY_DOMAIN` | unset | default rotates over all ADs |
 | `ASSIGN_PUBLIC_IP` | `true` | |
 | `NSG_IDS` | unset | comma-separated NSG OCIDs |
-| `ATTEMPT_INTERVAL_SECONDS` | `60` | minimum enforced |
-| `MAX_BACKOFF_SECONDS` | `1800` | 429/5xx backoff cap |
+| `ATTEMPT_INTERVAL_SECONDS` | `60` | jar default; the workflow sets `120` |
+| `MAX_BACKOFF_SECONDS` | `1800` | transient 5xx backoff cap |
 | `MAX_ATTEMPTS` | `0` | program default; the workflow uses 3 |
 
 `BOOT_VOLUME_VPUS=20` is Higher Performance, the fastest normal tier; `10` is Balanced and is the

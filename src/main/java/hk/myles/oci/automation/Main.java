@@ -178,6 +178,18 @@ public final class Main {
                     return 1;
                 }
 
+                if (kind == RetryPolicy.FailureKind.RATE_LIMIT) {
+                    // OCI is refusing launch calls from this tenant. Waiting inside the run keeps
+                    // the pressure on while the window is closed, so stop here and let the next
+                    // trigger make the next attempt.
+                    LOG.warn(
+                            "Attempt {} in {} hit a rate limit (HTTP 429): {}; ending this run, the next trigger will retry",
+                            attempt,
+                            availabilityDomain,
+                            detail);
+                    return 3;
+                }
+
                 transientStreak = kind == RetryPolicy.FailureKind.CAPACITY ? 0 : transientStreak + 1;
                 long delayMillis = policy.delayMillis(kind, transientStreak);
                 LOG.warn(

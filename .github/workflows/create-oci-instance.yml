@@ -90,7 +90,7 @@ jobs:
           IMAGE_OCID: ${{ vars.IMAGE_OCID || '' }}
           BOOT_VOLUME_VPUS: ${{ vars.BOOT_VOLUME_VPUS || '20' }}
           MAX_ATTEMPTS: ${{ vars.MAX_ATTEMPTS || '3' }}
-          ATTEMPT_INTERVAL_SECONDS: "60"
+          ATTEMPT_INTERVAL_SECONDS: "120"
         run: |
           if [ "${MAX_ATTEMPTS:-}" = "0" ]; then
             echo "::warning::MAX_ATTEMPTS=0 would run until the job timeout; using 3 for this run."

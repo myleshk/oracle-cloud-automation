@@ -54,11 +54,12 @@ Package `hk.myles.oci.automation`:
   NSGs), and the SSH key metadata. `launch` calls `launchInstance`, then polls `getInstance` every
   5 s for up to 20 minutes until RUNNING. `printAddresses` polls VNIC attachments for up to
   2 minutes to report the public/private IP.
-- `RetryPolicy` — classifies `BmcException`: "out of host capacity" is `CAPACITY` (fixed 60 s wait),
-  HTTP 429 is `RATE_LIMIT`, 5xx/timeouts are `TRANSIENT` (both double the delay up to the cap with
+- `RetryPolicy` — classifies `BmcException`: "out of host capacity" is `CAPACITY` (fixed wait),
+  HTTP 429 is `RATE_LIMIT`, 5xx/timeouts are `TRANSIENT` (doubling the delay up to the cap with
   +/-20% jitter), and 4xx plus quota/limit messages are `FATAL`. Unknown runtime exceptions abort.
-  A 429 is checked before quota strings because "rate limit exceeded" also contains "limit
-  exceeded".
+  `Main` returns exit 3 as soon as it sees `RATE_LIMIT` instead of sleeping, so a throttled run ends
+  and the next trigger tries again. A 429 is checked before quota strings because "rate limit
+  exceeded" also contains "limit exceeded".
 
 `.github/workflows/build.yml` runs on pushes to `main` that touch `src/`, `pom.xml`, or itself (and
 on `workflow_dispatch`). It runs `mvn -q package`, then creates or overwrites
