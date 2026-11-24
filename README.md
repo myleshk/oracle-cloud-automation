@@ -93,7 +93,10 @@ the two paths from racing.
 
 - Deploy the worker: `cd cloudflare-worker`, then `npx wrangler secret put GITHUB_TOKEN` with a
   fine-grained PAT scoped to this repository (Actions: read and write), then `npx wrangler deploy`.
-  Add the optional `TRIGGER_KEY` secret if you want the `POST /dispatch` endpoint guarded.
+  Add the optional `TRIGGER_KEY` secret if you want the `POST /dispatch` endpoint guarded. If
+  `wrangler login` fails with `request_forbidden` (a browser cookie problem), export
+  `CLOUDFLARE_API_TOKEN` from a token made with the *Edit Cloudflare Workers* template instead and
+  wrangler will use it without the OAuth flow.
 - Trigger a run by hand: `scripts/dispatch.sh`. It reads the same PAT from `$GITHUB_TOKEN`, or from
   `~/.config/github-tokens/myleshk-oracle-cloud-automation`, and prints the workflow run URL.
 - GitHub cron is UTC and best effort; runs can be delayed by several minutes under load.
